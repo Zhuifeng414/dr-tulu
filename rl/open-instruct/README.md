@@ -2,7 +2,7 @@
 
 # DR Tulu - RL Training Code
 
-This codebase is a modified version of the [Open-Instruct](https://github.com/allenai/open-instruct) codebase, used in the [DR Tulu](paper link) project to train deep research RL agents.
+This codebase is a modified version of the [Open-Instruct](https://github.com/allenai/open-instruct) codebase, used in the [DR Tulu](http://allenai-web/papers/drtulu) project to train deep research RL agents.
 
 We defer the reader to the [Open-Instruct](https://github.com/allenai/open-instruct) README for more details on the codebase in general.
 In particular, our branch is based on the following commit: [d075e4b](https://github.com/allenai/open-instruct/commit/d075e4bdcfc71b7713e789d2921016e0d84ee1fa).
