@@ -1,7 +1,12 @@
+import base64
 import hashlib
+import json
 import random
+import urllib.request
+from pathlib import Path
 from typing import Dict, List, Optional
 
+import pandas as pd
 from datasets import load_dataset
 
 from .data_types import DatasetConfig
@@ -12,16 +17,65 @@ SUPPORTED_TASKS = {
     "sqav2": "allenai/asta-bench",
 }
 
+DATASET_URLS = {
+    "browsecomp": "https://openaipublic.blob.core.windows.net/simple-evals/browse_comp_test_set.csv",
+    "simpleqa": "https://openaipublic.blob.core.windows.net/simple-evals/simple_qa_test_set.csv",
+    "healthbench_all": "https://openaipublic.blob.core.windows.net/simple-evals/healthbench/2025-05-07-06-14-12_oss_eval.jsonl",
+    "healthbench_hard": "https://openaipublic.blob.core.windows.net/simple-evals/healthbench/hard_2025-05-08-21-00-10.jsonl",
+    "healthbench_consensus": "https://openaipublic.blob.core.windows.net/simple-evals/healthbench/consensus_2025-05-09-20-00-46.jsonl",
+}
 
-def get_ablation_sample_size(benchmark: str) -> int:
+
+def get_cache_dir() -> Path:
+    """Get the cache directory for downloaded datasets."""
+    cache_dir = Path.home() / ".cache" / "dr_agent" / "datasets"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def download_file(url: str, cache_name: str) -> Path:
+    """Download file from URL to cache directory if not already cached."""
+    cache_path = get_cache_dir() / cache_name
+    if not cache_path.exists():
+        urllib.request.urlretrieve(url, cache_path)
+    return cache_path
+
+
+def derive_key(password: str, length: int) -> bytes:
+    """Derive a fixed-length key from the password using SHA256."""
+    hasher = hashlib.sha256()
+    hasher.update(password.encode())
+    key = hasher.digest()
+    return key * (length // len(key)) + key[: length % len(key)]
+
+
+def decrypt(ciphertext_b64: str, password: str) -> str:
+    """Decrypt base64-encoded ciphertext with XOR."""
+    encrypted = base64.b64decode(ciphertext_b64)
+    key = derive_key(password, len(encrypted))
+    decrypted = bytes(a ^ b for a, b in zip(encrypted, key))
+    return decrypted.decode()
+
+
+def get_ablation_sample_size(benchmark: str, subset_name: str = None) -> int:
     """Get the sample size for ablation studies (20% of full dataset)"""
     dataset_sizes = {
+        "healthbench": {"hard": 183, "consensus": 183, "all": 366},
+        "browsecomp": 1000,
+        "simpleqa": 1000,
         "deep_scholar_bench": 63,
         "sqav2": 100,
-        "genetic_qa": 100,
+        "genetic_diseases_qa": 100,
     }
 
-    full_size = dataset_sizes.get(benchmark, 100)
+    if benchmark == "healthbench":
+        if subset_name and subset_name in dataset_sizes[benchmark]:
+            full_size = dataset_sizes[benchmark][subset_name]
+        else:
+            full_size = dataset_sizes[benchmark]["all"]
+    else:
+        full_size = dataset_sizes.get(benchmark, 100)
+
     ablation_size = min(max(100, int(full_size * 0.2)), 500)
     return ablation_size
 
@@ -37,8 +91,10 @@ def load_eval_dataset(config: DatasetConfig) -> List[Dict]:
         List of dataset examples
     """
     num_examples = config.get("num_examples")
+    local_path = config.get("local_path")
+
     if num_examples == "ablation":
-        num_examples = get_ablation_sample_size(config["name"])
+        num_examples = get_ablation_sample_size(config["name"], config.get("subset"))
         shuffle = False
     elif num_examples == "final_run":
         num_examples = 1000
@@ -54,7 +110,14 @@ def load_eval_dataset(config: DatasetConfig) -> List[Dict]:
             "num_examples must be an integer or 'ablation', 'final_run', or 'final_run_100'"
         )
 
-    if config["name"] == "deep_scholar_bench":
+    if config["name"] == "browsecomp":
+        return load_browsecomp_data(num_examples, shuffle, local_path)
+    elif config["name"] == "simpleqa":
+        return load_simpleqa_data(num_examples, shuffle, local_path)
+    elif config["name"] == "healthbench":
+        subset = config.get("subset", "all")
+        return load_healthbench_data(subset, num_examples, shuffle, local_path)
+    elif config["name"] == "deep_scholar_bench":
         return load_deep_scholar_bench_data(num_examples)
     elif config["name"] == "sqav2":
         return load_sqav2_data(num_examples, shuffle)
@@ -62,8 +125,163 @@ def load_eval_dataset(config: DatasetConfig) -> List[Dict]:
         return load_genetic_diseases_qa_data(num_examples, shuffle)
     else:
         raise ValueError(
-            f"Unsupported dataset: {config['name']}. Supported datasets: {list(SUPPORTED_TASKS.keys())}"
+            f"Unsupported dataset: {config['name']}. Supported datasets: {list(SUPPORTED_TASKS.keys())}, browsecomp, simpleqa, healthbench"
         )
+
+
+def load_browsecomp_data(
+    num_examples: Optional[int] = None,
+    shuffle: bool = False,
+    local_path: Optional[str] = None,
+) -> List[Dict]:
+    """
+    Load BrowseComp dataset data with decrypted problem and answer fields.
+
+    Args:
+        num_examples: Limit to first N examples (optional)
+        shuffle: Whether to shuffle the examples
+        local_path: Optional local path to dataset file
+
+    Returns:
+        List of BrowseComp examples with decrypted content
+    """
+    if local_path and Path(local_path).exists():
+        df = pd.read_csv(local_path)
+    else:
+        cache_path = download_file(
+            DATASET_URLS["browsecomp"], "browse_comp_test_set.csv"
+        )
+        df = pd.read_csv(cache_path)
+
+    df["problem"] = df.apply(lambda row: decrypt(row["problem"], row["canary"]), axis=1)
+    df["answer"] = df.apply(lambda row: decrypt(row["answer"], row["canary"]), axis=1)
+    df["id"] = df["problem"].apply(
+        lambda problem: hashlib.md5(problem.encode()).hexdigest()
+    )
+    df["additional_instructions"] = (
+        """
+Your final response should be in the following format:
+Explanation: <your explanation for your final answer>
+Exact Answer: <your succinct, final answer>
+Confidence: <your confidence score between 0% and 100% for your answer>
+""".strip()
+    )
+
+    examples = df.to_dict("records")
+
+    if shuffle:
+        random.seed(42)
+        random.shuffle(examples)
+
+    if num_examples:
+        examples = examples[:num_examples]
+
+    return examples
+
+
+def load_simpleqa_data(
+    num_examples: Optional[int] = None,
+    shuffle: bool = False,
+    local_path: Optional[str] = None,
+) -> List[Dict]:
+    """
+    Load SimpleQA dataset data.
+
+    Args:
+        num_examples: Limit to first N examples (optional)
+        shuffle: Whether to shuffle the examples
+        local_path: Optional local path to dataset file
+
+    Returns:
+        List of SimpleQA examples
+    """
+    if local_path and Path(local_path).exists():
+        df = pd.read_csv(local_path)
+    else:
+        cache_path = download_file(DATASET_URLS["simpleqa"], "simple_qa_test_set.csv")
+        df = pd.read_csv(cache_path)
+
+    df["id"] = df["problem"].apply(
+        lambda problem: hashlib.md5(problem.encode()).hexdigest()
+    )
+    df["additional_instructions"] = (
+        """
+Your final response should be in the following format:
+Exact Answer: <your succinct, final answer>
+""".strip()
+    )
+
+    examples = df.to_dict("records")
+
+    if shuffle:
+        random.seed(42)
+        random.shuffle(examples)
+
+    if num_examples:
+        examples = examples[:num_examples]
+
+    return examples
+
+
+def load_healthbench_data(
+    subset: str = "all",
+    num_examples: Optional[int] = None,
+    shuffle: bool = False,
+    local_path: Optional[str] = None,
+) -> List[Dict]:
+    """
+    Load HealthBench dataset data.
+
+    Args:
+        subset: "all", "hard", or "consensus"
+        num_examples: Limit to first N examples (optional)
+        shuffle: Whether to shuffle the examples
+        local_path: Optional local path to dataset file
+
+    Returns:
+        List of HealthBench examples
+    """
+
+    def format_conversation(conversation):
+        role_mapping = {"user": "Patient", "assistant": "Physician"}
+        return "\n\n".join(
+            [f"{role_mapping[ele['role']]}: {ele['content']}" for ele in conversation]
+        )
+
+    def stringify_example_prompt(prompt):
+        if len(prompt) == 1:
+            return f"Can you answer the question from a patient about a medical condition or concern they have: {prompt[0]['content']}"
+        elif len(prompt) > 1:
+            return f"Here is a conversation between a patient and a physician. The patient is asking a question about a medical condition or concern they have, and in the conversation it should contain necessary background information about the patient:\n\n{format_conversation(prompt[:-1])}\n\nCan you search for needed information and answer the patient's question: {prompt[-1]['content']}"
+        else:
+            raise ValueError(
+                "Data error: there should be at least one element in the prompt."
+            )
+
+    examples = []
+
+    if local_path and Path(local_path).exists():
+        with open(local_path, "r") as f:
+            examples = [json.loads(line.strip()) for line in f if line.strip()]
+    else:
+        url_key = f"healthbench_{subset}"
+        cache_name = f"healthbench_{subset}.jsonl"
+        cache_path = download_file(DATASET_URLS[url_key], cache_name)
+        with open(cache_path, "r") as f:
+            examples = [json.loads(line.strip()) for line in f if line.strip()]
+
+    if shuffle:
+        random.seed(42)
+        random.shuffle(examples)
+
+    if num_examples:
+        examples = examples[:num_examples]
+
+    for example in examples:
+        example["id"] = example["prompt_id"]
+        example["problem"] = stringify_example_prompt(example["prompt"])
+
+    return examples
 
 
 def load_deep_scholar_bench_data(num_examples: Optional[int] = None) -> List[Dict]:
