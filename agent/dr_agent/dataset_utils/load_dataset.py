@@ -137,6 +137,8 @@ def load_dataset(config: DatasetConfig) -> List[Dict]:
         return load_sqav2_data(num_examples, shuffle)
     elif config["name"] == "genetic_diseases_qa":
         return load_genetic_diseases_qa_data(num_examples, shuffle)
+    elif config["name"] == "dsqa":
+        return load_dsqa_data(num_examples, shuffle)
     elif config["name"] in ["2wiki", "webwalker"]:
         dataset_repo = SUPPORTED_TASKS[config["name"]]
         return load_shortformqa_data(dataset_repo, num_examples, shuffle)
@@ -518,6 +520,54 @@ def load_researchqa_data(
                 "additional_instructions": "Answer the question completely and precisely in around 240-260 words. You need to support every statement in the answer with in-line citations to passages given in the context. Don't enumerate the facts. You should provide an answer in one-to-three paragraphs.",
             }
         )
+
+    if shuffle:
+        random.seed(42)
+        random.shuffle(examples)
+
+    if num_examples:
+        examples = examples[:num_examples]
+
+    return examples
+
+def load_dsqa_data(
+    num_examples: Optional[int] = None,
+    shuffle: bool = False,
+) -> List[Dict]:
+    """Load DSQA dataset data.
+    
+    # Download the dataset from Kaggle and upload to Hugging Face for consistency
+    import kagglehub
+    import pandas as pd
+    from datasets import Dataset
+    import os 
+    os.environ["HF_TOKEN"] = "xxx"
+
+    path = kagglehub.dataset_download("deepmind/deepsearchqa")
+    df = pd.read_csv(f"{path}/DSQA-full.csv")
+
+    ds = Dataset.from_pandas(df)
+    ds.push_to_hub("rl-research/dsqa")  
+    """
+    data = datasets.load_dataset("rl-research/dsqa", split="train")
+
+    examples = []
+    for sample in data:
+        problem = sample["problem"]
+        ans_raw = sample.get("answer", "")
+        ans_type = sample.get("answer_type", "")
+
+        if ans_type == "Set Answer":
+            answers = [a.strip() for a in str(ans_raw).split(",") if a.strip()]
+        else:
+            answers = [ans_raw] if ans_raw else []
+
+        examples.append({
+            "id": hashlib.md5(problem.encode()).hexdigest(),
+            "problem": problem,
+            "additional_instructions": "Your final response should be in the following format without any other text:\nExact Answer: <your succinct, final answer>",
+            "answers": answers,
+        })
 
     if shuffle:
         random.seed(42)
