@@ -34,6 +34,7 @@ MAX_CONCURRENT=5
 export JAVA_HOME=/gpfs/projects/kohlab/rulins/env/dev
 export JVM_PATH=/gpfs/projects/kohlab/rulins/env/dev/lib/jvm/lib/server/libjvm.so
 export PATH=$JAVA_HOME/bin:$PATH
+export USE_LOCAL_SEARCH=true
 
 echo "=============================================="
 echo "Evaluating on $DATASET"

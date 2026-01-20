@@ -36,6 +36,7 @@ export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
 export RUBRIC_JUDGE_MODEL=gpt-4.1-mini
 export MCP_CACHE_DIR=.cache-${RANDOM}
 export MCP_TRANSPORT_PORT=8003
+export USE_LOCAL_SEARCH=true
 
 # Verbose error reporting
 export PYTHONFAULTHANDLER=1

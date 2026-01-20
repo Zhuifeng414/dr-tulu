@@ -18,11 +18,13 @@ except ImportError as e:
 from open_instruct.search_rewards.utils.format_utils import generate_snippet_id
 from open_instruct.tool_utils.tool_vllm import Tool, ToolOutput
 
+USE_LOCAL_SEARCH = os.environ.get("USE_LOCAL_SEARCH", "false").lower() == "true"
+
 MCP_TOOL_REGISTRY = {
-    "snippet_search": LocalSearchTool,
-    "google_search": LocalSearchTool,
+    "snippet_search": LocalSearchTool if USE_LOCAL_SEARCH else SemanticScholarSnippetSearchTool,
+    "google_search": LocalSearchTool if USE_LOCAL_SEARCH else SerperSearchTool,
     "massive_serve": MassiveServeSearchTool,
-    "browse_webpage": LocalBrowseTool,
+    "browse_webpage": LocalBrowseTool if USE_LOCAL_SEARCH else Crawl4AIBrowseTool,
     # "browse_webpage": SerperBrowseTool
 }
 
