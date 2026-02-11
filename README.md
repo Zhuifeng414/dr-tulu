@@ -4,8 +4,7 @@
 # DR Tulu: Reinforcement Learning with Evolving Rubrics for Deep Research
 
 
-[**Paper**](https://allenai.org/papers/drtulu) • [**Data & Models**](https://huggingface.co/collections/rl-research/dr-tulu) • [**Blogpost**](http://allenai.org/blog/dr-tulu) • [**Video**](https://youtu.be/4i0W9qAf8K8)• [**Static Demo**](https://dr-tulu.github.io/) (Our live demo is coming soon - stay tuned!) 
-
+[**Paper**](https://allenai.org/papers/drtulu) • [**Data & Models**](https://huggingface.co/collections/rl-research/dr-tulu) • [**Blogpost**](http://allenai.org/blog/dr-tulu) • [**Video**](https://youtu.be/4i0W9qAf8K8)• [**Static Demo**](https://dr-tulu.github.io/) • [**Live Demo**](https://www.dr-tulu.org/chat)
 </div>
 
 DR Tulu-8B is the first open Deep Research (DR) model trained for long-form DR tasks. DR Tulu-8B matches OpenAI DR on long-form DR benchmarks.
@@ -17,6 +16,7 @@ DR Tulu-8B is the first open Deep Research (DR) model trained for long-form DR t
 ---
 
 ## Release Notes 
+- Feburary 9, 2026: 🔥 We released a free interactive demo for DR Tulu-8B! Try it out at [dr-tulu.org](https://www.dr-tulu.org/chat)!
 - November 19, 2025: Initial code release.
 - November 25, 2025: We released our interactive CLI demo code, along with additional documentation for evaluation, training, and our new RL checkpoints.
 
